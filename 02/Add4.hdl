@@ -1,0 +1,44 @@
+CHIP Add4 {
+    IN a[4], b[4], cIn;
+    OUT
+        out[4],
+        cOut,
+        pg,
+        gg;
+
+    PARTS:
+        // sum and carry
+        FullAdderOpt(a=a[0], b=b[0], c=cIn, sum=out[0], p=p0, g=g0);
+
+        And(a=p0, b=cIn, out=cInORp0);
+        Or(a=cInORp0, b=g0, out=carry1);
+
+        FullAdderOpt(a=a[1], b=b[1], c=carry1, sum=out[1], p=p1, g=g1);
+
+        And(a=p1, b=carry1, out=carry1ORp1);
+        Or(a=carry1ORp1, b=g1, out=carry2);
+
+        FullAdderOpt(a=a[2], b=b[2], c=carry2, sum=out[2], p=p2, g=g2);
+
+        And(a=p2, b=carry2, out=carry2ORp2);
+        Or(a=carry2ORp2, b=g2, out=carry3);
+
+        FullAdderOpt(a=a[3], b=b[3], c=carry3, sum=out[3], p=p3, g=g3);
+
+        And(a=p3, b=carry3, out=carry3ORp3);
+        Or(a=carry3ORp3, b=g3, out=cOut);
+
+        // Group propagate
+        And(a=p3, b=p2, out=p3ANDp2);
+        And(a=p3ANDp2, b=p1, out=p3ANDp2ANDp1);
+        And(a=p3ANDp2ANDp1, b=p0, out=pg);
+
+        // Group generate
+        And(a=p3ANDp2ANDp1, b=g0, out=p3ANDp2ANDp1ANDg0);
+        And(a=p3ANDp2, b=g1, out=p3ANDp2ANDg1);
+        And(a=p3, b=g2, out=p3ANDg2);
+
+        Or(a=g3, b=p3ANDg2, out=p3ANDg2ORg3);
+        Or(a=p3ANDg2ORg3, b=p3ANDp2ANDg1, out=p3ANDg2ORg3ORp3ANDp2ANDg1);
+        Or(a=p3ANDg2ORg3ORp3ANDp2ANDg1, b=p3ANDp2ANDp1ANDg0, out=gg);
+}
