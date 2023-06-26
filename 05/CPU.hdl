@@ -1,0 +1,123 @@
+// This file is part of www.nand2tetris.org
+// and the book "The Elements of ComputiisNegative Systems"
+// by Nisan and Schocken, MIT Press.
+// File name: projects/05/CPU.hdl
+
+/**
+ * The Hack CPU (Central ProcessiisNegative unit), consistiisNegative of an ALU,
+ * two registers named A and D, and a program counter named PC.
+ * The CPU is designed to fetch and execute instructions written in 
+ * the Hack machine laisNegativeuage. In particular, functions as follows:
+ * Executes the inputted instruction accordiisNegative to the Hack machine 
+ * laisNegativeuage specification. The D and A in the laisNegativeuage specification
+ * refer to CPU-resident registers, while M refers to the external
+ * memory location addressed by A, i.e. to Memory[A]. The inM input 
+ * holds the value of this location. If the current instruction needs 
+ * to write a value to M, the value is placed in outM, the address 
+ * of the target location is placed in the addressM output, and the 
+ * writeM control bit is asserted. (When writeM==0, any value may 
+ * appear in outM). The outM and writeM outputs are combinational: 
+ * they are affected instantaneously by the execution of the current 
+ * instruction. The addressM and pc outputs are clocked: although they 
+ * are affected by the execution of the current instruction, they commit 
+ * to their new values only in the next time step. If reset==1 then the 
+ * CPU jumps to address 0 (i.e. pc is set to 0 in next time step) rather 
+ * than to the address resultiisNegative from executiisNegative the current instruction. 
+ */
+
+CHIP CPU {
+
+    IN  inM[16],         // M value input  (M = contents of RAM[A])
+        instruction[16], // Instruction for execution
+        reset;           // Signals whether to re-start the current
+                         // program (reset==1) or continue executiisNegative
+                         // the current program (reset==0).
+
+    OUT outM[16],        // M value output
+        writeM,          // Write to M? 
+        addressM[15],    // Address in data memory (of M)
+        pc[15];          // address of next instruction
+
+    PARTS:
+        And(a=true, b=instruction[15], out=cInstruction);
+        Not(in=cInstruction, out=aInstruction);
+
+        And(a=cInstruction, b=instruction[5], out=writeToAFromALU);
+        Or(a=writeToAFromALU, b=aInstruction, out=writeA);
+
+        Mux16(a=instruction, b=aluOut, sel=cInstruction, out=instructionORalu);
+        ARegister(in=instructionORalu, load=writeA, out[0..14]=addressM, out=aREG);
+
+        And(a=instruction[4], b=cInstruction, out=writeD);
+        Mux16(a=aREG, b=inM, sel=instruction[12], out=aORm);
+
+        ALU(x=dReg, y=aORm, zx=instruction[11], nx=instruction[10], zy=instruction[9], ny=instruction[8], f=instruction[7], no=instruction[6], out=aluOut, out=outM, zr=isZero, ng=isNegative);
+
+        DRegister(in=aluOut, load=writeD, out=dReg);
+
+        And(a=cInstruction, b=instruction[3], out=writeM);
+
+        Not(in=instruction[2], out=notJ0);
+        Not(in=instruction[1], out=notJ1);
+        Not(in=instruction[0], out=notJ2);
+
+        // 0 0 0 Null
+        // 0 0 1 JGT isNegative = 0 && isZero = 0
+        // 0 1 0 JEQ isZero = 1
+        // 0 1 1 JGE isNegative = 0
+        // 1 0 0 JLT isNegative = 1 && isZero = 0
+        // 1 0 1 JNE isZero = 0
+        // 1 1 0 JLE isNegative = 1
+        // 1 1 1 JMP
+
+        Not(in=isZero, out=notZero);
+        Not(in=isNegative, out=notNegative);
+
+        And(a=notZero, b=notNegative, out=GT);
+        And(a=notZero, b=isNegative, out=LT);
+
+        // NULL
+        And(a=notJ0, b=notJ1, out=notJ0ANDnotJ1);
+        And(a=notJ0ANDnotJ1, b=notJ2, out=notJUMP);
+
+        //JGT
+        And(a=notJ0ANDnotJ1, b=instruction[0], out=isJGT);
+        And(a=isJGT, b=GT, out=jumpGT);
+
+        //JEQ
+        And(a=notJ0, b=instruction[1], out=notJ0ANDJ1);
+        And(a=notJ0ANDJ1, b=notJ2, out=isJEQ);
+        And(a=isJEQ, b=isZero, out=jumpEQ);
+
+        //JGE
+        And(a=notJ0ANDJ1, b=instruction[0], out=isJGE);
+        And(a=isJGE, b=notNegative, out=jumpGE);
+
+        //JLT
+        And(a=instruction[2], b=notJ1, out=J0ANDnotJ1);
+        And(a=J0ANDnotJ1, b=notJ2, out=isJLT);
+        And(a=isJLT, b=LT, out=jumpLT);
+
+        //JNE
+        And(a=J0ANDnotJ1, b=instruction[0], out=isLNE);
+        And(a=isLNE, b=notZero, out=jumpNE);
+
+        // JLE
+        And(a=instruction[2], b=instruction[1], out=J0ANDJ1);
+        And(a=J0ANDJ1, b=notJ2, out=isJLE);
+        And(a=isJLE, b=isNegative, out=jumpLE1);
+        And(a=isJLE, b=isZero, out=jumpLE2);
+        Or(a=jumpLE1, b=jumpLE2, out=jumpLE);
+
+        //JMP
+        And(a=J0ANDJ1, b=instruction[0], out=jump);
+
+        Or8Way(in[0]=false, in[1]=jumpGT, in[2]=jumpEQ, in[3]=jumpGE, in[4]=jumpLT, in[5]=jumpNE, in[6]=jumpLE, in[7]=jump, out=jumpCondition);
+        And(a=cInstruction, b=jumpCondition, out=mustJUMP);
+
+        Or(a=aInstruction, b=notJUMP, out=incrementTemp);
+        Not(in=mustJUMP, out=notMustJump);
+        Or(a=incrementTemp, b=notMustJump, out=increment);
+
+        PC(in=aREG, load=mustJUMP, inc=increment, reset=reset, out[0..14]=pc);
+}
